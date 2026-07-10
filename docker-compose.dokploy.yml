@@ -1,0 +1,44 @@
+---
+# Dokploy deployment for NostalgiaForInfinity.
+#
+# One dokploy Compose app = one bot instance. For a second bot, create another
+# dokploy app from the same repo and give it different env values (at minimum
+# FREQTRADE__BOT_NAME and FREQTRADE__API_SERVER__LISTEN_PORT).
+#
+# Persistence: ../files is dokploy's per-app persistent directory. It survives
+# redeploys, unlike the cloned repo directory. The bot's state (tradesv3.sqlite)
+# lives there — never point this volume at the repo checkout.
+#
+# All exchange keys and API credentials come from the dokploy Environment tab
+# (FREQTRADE__* variables), not from files in the repo.
+
+services:
+
+  freqtrade:
+    # Pinned version. Bump deliberately, together with a strategy backtest,
+    # instead of tracking the moving :stable tag on a live account.
+    image: freqtradeorg/freqtrade:2026.6
+    restart: unless-stopped
+    container_name: ${FREQTRADE__BOT_NAME:-NFI_Bot}_${FREQTRADE__EXCHANGE__NAME:-binance}_${FREQTRADE__TRADING_MODE:-spot}-${FREQTRADE__STRATEGY:-NostalgiaForInfinityX7}
+    volumes:
+      - "../files/user_data:/freqtrade/user_data"
+      - "./configs:/freqtrade/configs"
+      - "./${FREQTRADE__STRATEGY:-NostalgiaForInfinityX7}.py:/freqtrade/${FREQTRADE__STRATEGY:-NostalgiaForInfinityX7}.py"
+    ports:
+      - "${FREQTRADE__API_SERVER__LISTEN_PORT:-8080}:${FREQTRADE__API_SERVER__LISTEN_PORT:-8080}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${FREQTRADE__API_SERVER__LISTEN_PORT:-8080}"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 5s
+    env_file:
+      - path: .env
+        required: false
+    command: >
+      trade
+      --config configs/dokploy-spot.json
+      --db-url sqlite:////freqtrade/user_data/${FREQTRADE__BOT_NAME:-NFI_Bot}_${FREQTRADE__EXCHANGE__NAME:-binance}_${FREQTRADE__TRADING_MODE:-spot}-tradesv3.sqlite
+      --log-file user_data/logs/${FREQTRADE__BOT_NAME:-NFI_Bot}-${FREQTRADE__EXCHANGE__NAME:-binance}-${FREQTRADE__STRATEGY:-NostalgiaForInfinityX7}-${FREQTRADE__TRADING_MODE:-spot}.log
+      --strategy-path .
